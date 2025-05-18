@@ -10,10 +10,6 @@ const int COORDINATES_X = 200;
 const int COORDINATES_Y = 200;
 const int COORDINATES_Z = 200;
 
-const int POSICAO_Y_TERRA = -COORDINATES_Y / 2 + 30;
-const int POSICAO_X_PINGUIM = -COORDINATES_X / 2 - 50;
-
-
 
 //////////////////////////////////////////////////////////////
 ///declaracao de funcoes
@@ -266,6 +262,7 @@ private:
     void desenharBico();
     void desenharPatas();
 
+protected:
     Direcao direcao;
     Posicao posicao;
     Estado estado{ ANDANDO };
@@ -335,7 +332,7 @@ void Pinguim::mover(int deltaX, int deltaY, Direcao direcao)
         if (posicao.x < 5 && posicao.y > -110)
         {
             estado = Estado::ANDANDO;
-            posicao.y = -70;
+            posicao.y = -71;
         }
     }
 
@@ -413,9 +410,44 @@ void Pinguim::desenharPatas()
 }
 //////////////////////////////////////////////////////////////////////////
 
+/////////////////////////////////////////////////////////////////////
+// codigo Filhote
+class Filhote : public Pinguim
+{
+public:
+    Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida = 60.0);
 
+    void desenhar() override;
+
+private:
+    double tempoRestanteVida;
+    double escala{ 0.8 }; // menor que o pinguim adulto
+};
+
+Filhote::Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida)
+    : Pinguim(direcao, posicao)
+    , tempoRestanteVida(tempoInicialVida)
+{
+}
+
+void Filhote::desenhar()
+{
+    glPushMatrix();
+    glTranslatef(posicao.x, posicao.y, 0.0f);
+    glScalef(escala, escala, 1);
+    glTranslatef(-posicao.x, -posicao.y, 0.0f);
+    Pinguim::desenhar();         
+    glPopMatrix();
+}
+
+/////////////////////////////////////////////////////////////////////
+
+
+const int POSICAO_Y_TERRA = -COORDINATES_Y / 2 + 29;
+const int POSICAO_X_PINGUIM = -COORDINATES_X / 2 - 50;
 
 Pinguim pinguim(Direcao::DIREITA, { POSICAO_X_PINGUIM, POSICAO_Y_TERRA });
+Filhote filhote(Direcao::DIREITA, { POSICAO_X_PINGUIM -20, POSICAO_Y_TERRA - 6 });
 
 std::vector<Peixe> peixes = {
     Peixe(Direcao::DIREITA, {15 , -75}),
@@ -479,6 +511,7 @@ void display()
     ambiente.desenhar();
 
     pinguim.desenhar();
+    filhote.desenhar();
 
     glutSwapBuffers();
 }
