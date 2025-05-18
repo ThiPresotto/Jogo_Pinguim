@@ -311,7 +311,8 @@ void Pinguim::mover(int deltaX, int deltaY, Direcao direcao)
 
     if (estado == Estado::ANDANDO)
     {
-        posicao.x += deltaX;
+        if (posicao.x + deltaX >= -COORDINATES_X)
+            posicao.x += deltaX;
 
         if (posicao.x >= 5)
         {
@@ -323,10 +324,10 @@ void Pinguim::mover(int deltaX, int deltaY, Direcao direcao)
     }
     else if (estado == Estado::NADANDO)
     {
-        if (posicao.x + deltaX >= 0)
+        if (posicao.x + deltaX >= 0 && posicao.x + deltaX <= COORDINATES_X)
             posicao.x += deltaX;
 
-        if ((posicao.y + deltaY) <= -100)
+        if ((posicao.y + deltaY) <= -100 && (posicao.y + deltaY) >= -COORDINATES_Y)
             posicao.y += deltaY;
 
         if (posicao.x < 5 && posicao.y > -110)
