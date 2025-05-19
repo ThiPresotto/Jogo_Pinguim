@@ -1,6 +1,8 @@
 #include <GL/glut.h>
 #include <iostream>
 #include <vector>
+#include <array>
+#include <string>
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -10,6 +12,8 @@ const int COORDINATES_X = 200;
 const int COORDINATES_Y = 200;
 const int COORDINATES_Z = 200;
 
+int DURACAO_JOGO = 5*60; // 5 minutos
+
 
 //////////////////////////////////////////////////////////////
 ///declaracao de funcoes
@@ -18,6 +22,9 @@ void triangle();
 void init();
 void display();
 void specialKeys(int key, int x, int y);
+void atualizaTempo(int valor);
+void atualizarPeixes(int valor);
+void desenharTempoJogo();
 //////////////////////////////////////////////////////////////
 
 // interface para desenhar objetos
@@ -155,6 +162,7 @@ class Peixe : public IDesenhavel
 public:
     Peixe(Direcao direcao, Posicao posicao);
     void desenhar() override;
+    void mover(int delta);
 
 private:
     void desenharCorpo();
@@ -182,6 +190,19 @@ void Peixe::desenhar()
     desenharCorpo();
     desenharCauda();
     glPopMatrix();
+}
+
+void Peixe::mover(int delta)
+{
+    if (direcao == Direcao::ESQUERDA)
+        posicao.x -= delta;
+    else if (direcao == Direcao::DIREITA)
+        posicao.x += delta;
+
+    if (posicao.x > COORDINATES_X - 2)
+        this->direcao = Direcao::ESQUERDA;
+    else if (posicao.x < 5)
+        this->direcao = Direcao::DIREITA;
 }
 
 void Peixe::desenharCorpo()
@@ -450,11 +471,15 @@ const int POSICAO_X_PINGUIM = -COORDINATES_X / 2 - 50;
 Pinguim pinguim(Direcao::DIREITA, { POSICAO_X_PINGUIM, POSICAO_Y_TERRA });
 Filhote filhote(Direcao::DIREITA, { POSICAO_X_PINGUIM -20, POSICAO_Y_TERRA - 6 });
 
-std::vector<Peixe> peixes = {
-    Peixe(Direcao::DIREITA, {15 , -75}),
-    Peixe(Direcao::ESQUERDA, { 30, -60}),
-    Peixe(Direcao::DIREITA, {65, -74}),
-    Peixe(Direcao::ESQUERDA, {74, -80}),
+
+const std::array<int, 4> posicaoInicialYPeixes = { -180, -160, -140, -120 };
+const std::array<int, 7> posicaoInicialXPeixes = { 50, 25, 75, 100, 125, 150, 175 };
+
+std::vector<Peixe> peixes {
+    Peixe(Direcao::DIREITA, { posicaoInicialXPeixes[0], posicaoInicialYPeixes[0] }),
+    Peixe(Direcao::DIREITA, { posicaoInicialXPeixes[1], posicaoInicialYPeixes[1] }),
+    Peixe(Direcao::ESQUERDA, { posicaoInicialXPeixes[2], posicaoInicialYPeixes[2] }),
+    Peixe(Direcao::ESQUERDA, { posicaoInicialXPeixes[3], posicaoInicialYPeixes[3] })
 };
 
 int main(int argc, char** argv)
@@ -467,6 +492,8 @@ int main(int argc, char** argv)
     glutInitWindowPosition(100, 100);
     glutCreateWindow("Jogo do Pinquim");
     glutSpecialFunc(specialKeys);
+    glutTimerFunc(1000, atualizaTempo, 0);
+    glutTimerFunc(200, atualizarPeixes, 0); 
 
     init();
     glutDisplayFunc(display);
@@ -484,7 +511,8 @@ void init(void)
         COORDINATES_Y, -COORDINATES_Z, COORDINATES_Z);
 }
 
-void specialKeys(int key, int x, int y) {
+void specialKeys(int key, int x, int y) 
+{
     switch (key) {
     case GLUT_KEY_LEFT:
         pinguim.mover(-5, 0, Direcao::ESQUERDA);
@@ -502,6 +530,43 @@ void specialKeys(int key, int x, int y) {
     glutPostRedisplay();
 }
 
+void desenharTempoJogo()
+{
+    glPushMatrix();
+        glColor3f(1, 1, 1);
+        glRasterPos2f(0, 0);
+        std::string tempo = "Tempo restante: " + std::to_string(DURACAO_JOGO);
+        for (char c : tempo)
+        {
+            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+        }
+    glPopMatrix();
+}
+
+void atualizaTempo(int valor) 
+{
+    if (DURACAO_JOGO > 0)
+        DURACAO_JOGO--;
+    else
+    {
+        std::cout << "Fim de jogo!" << std::endl;
+        exit(0);
+    }
+
+    glutPostRedisplay();
+    glutTimerFunc(1000, atualizaTempo, 0);
+}
+
+void atualizarPeixes(int valor)
+{
+    for (auto& peixe : peixes)
+        peixe.mover(1);
+
+    glutPostRedisplay();
+    glutTimerFunc(DELAY, atualizarPeixes, 0);
+}
+
+
 void display()
 {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -510,9 +575,13 @@ void display()
 
     Ambiente ambiente(COORDINATES_X, COORDINATES_Y);
     ambiente.desenhar();
+    desenharTempoJogo();
 
     pinguim.desenhar();
     filhote.desenhar();
+
+    for (auto& peixe : peixes)
+        peixe.desenhar();
 
     glutSwapBuffers();
 }
