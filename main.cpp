@@ -42,9 +42,9 @@ public:
 /// codigo com funcoes comuns
 struct Posicao
 {
-    int x;
-    int y;
-    Posicao(int x, int y) : x(x), y(y) {}
+    double x;
+    double y;
+    Posicao(double x, double y) : x(x), y(y) {}
 };
 
 struct Cor
@@ -292,6 +292,7 @@ protected:
     double tamanhoOlhos{ 2 };
     double tamanhoBico{ 3 };
     double tamanhoPatas{ 8 };
+    bool temPeixeNaBoca { false };
 };
 
 Pinguim::Pinguim(Direcao direcao, Posicao posicao)
@@ -403,20 +404,33 @@ void Pinguim::desenharOlhos()
 
 void Pinguim::desenharBico()
 {
-    int posicaoBico{ 10 };
+    double posicaoBico{ 10 };
+    double posicaoPeixe { 7 };
 
     if (direcao == Direcao::ESQUERDA)
+    {
         posicaoBico = -posicaoBico;
+        posicaoPeixe = -posicaoPeixe;
+    }
 
 
     glColor3f(1.0, 0.65, 0.0);
 
-    glPushMatrix();
-    glTranslatef(0.0f, tamanhoCorpo * 1.5, 0.0f);
-    glTranslatef(posicaoBico, -tamanhoCabeca / 2, 0.0f);
-    glScalef(5, 5, 1);
-    triangle();
+        glPushMatrix();
+        glTranslatef(posicaoBico, tamanhoCorpo * 1.5  - tamanhoCabeca / 2, 0.0f);
+        glScalef(5, 5, 1);
+        triangle();
     glPopMatrix();
+
+    if (temPeixeNaBoca)
+    {
+        glPushMatrix();
+        Peixe peixeNaBoca(Direcao::CIMA, { posicaoPeixe, 
+                                    (tamanhoCorpo * 1.5 - tamanhoCabeca / 2  - 5)});  
+        glScalef(2, 2, 1);    
+        peixeNaBoca.desenhar();
+        glPopMatrix();
+    }
 }
 
 void Pinguim::desenharPatas()
@@ -450,6 +464,7 @@ Filhote::Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida)
     : Pinguim(direcao, posicao)
     , tempoRestanteVida(tempoInicialVida)
 {
+    temPeixeNaBoca = false;
 }
 
 void Filhote::desenhar()
@@ -472,8 +487,8 @@ Pinguim pinguim(Direcao::DIREITA, { POSICAO_X_PINGUIM, POSICAO_Y_TERRA });
 Filhote filhote(Direcao::DIREITA, { POSICAO_X_PINGUIM -20, POSICAO_Y_TERRA - 6 });
 
 
-const std::array<int, 4> posicaoInicialYPeixes = { -180, -160, -140, -120 };
-const std::array<int, 7> posicaoInicialXPeixes = { 50, 25, 75, 100, 125, 150, 175 };
+const std::array<double, 4> posicaoInicialYPeixes = { -180, -160, -140, -120 };
+const std::array<double, 7> posicaoInicialXPeixes = { 50, 25, 75, 100, 125, 150, 175 };
 
 std::vector<Peixe> peixes {
     Peixe(Direcao::DIREITA, { posicaoInicialXPeixes[0], posicaoInicialYPeixes[0] }),
