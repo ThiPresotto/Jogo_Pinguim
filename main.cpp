@@ -289,7 +289,8 @@ public:
     void mover(int deltaX, int deltaY, Direcao direcao);
     Area getAreaCabeca() const;
     void capturouPeixe();
-    bool temPeixeNaBoca() const { return temPeixeNaBoca; }
+    bool temPeixeNaBoca() const { return peixeNaBoca; }
+    bool entregouPeixe(Posicao posicaoFilhote);
 
 private:
 
@@ -314,7 +315,7 @@ protected:
     double tamanhoOlhos{ 2 };
     double tamanhoBico{ 3 };
     double tamanhoPatas{ 8 };
-    bool temPeixeNaBoca { false };
+    bool peixeNaBoca { false };
 };
 
 Pinguim::Pinguim(Direcao direcao, Posicao posicao)
@@ -416,7 +417,22 @@ Area Pinguim::getAreaCabeca() const
 
 void Pinguim::capturouPeixe()
 {
-    this->temPeixeNaBoca = true;
+    peixeNaBoca = true;
+}
+
+bool Pinguim::entregouPeixe(Posicao posicaoFilhote)
+{
+    if (!temPeixeNaBoca())
+        return false;
+
+    if (posicao.x > posicaoFilhote.x - 10 && posicao.x < posicaoFilhote.x + 10 &&
+        posicao.y > posicaoFilhote.y - 10 && posicao.y < posicaoFilhote.y + 10)
+    {
+        peixeNaBoca = false;
+        return true;
+    }
+
+    return false;
 }
 
 void Pinguim::desenharCorpo()
@@ -480,7 +496,7 @@ void Pinguim::desenharBico()
         triangle();
     glPopMatrix();
 
-    if (temPeixeNaBoca)
+    if (temPeixeNaBoca())
     {
         glPushMatrix();
         Peixe peixeNaBoca(Direcao::CIMA, { posicaoPeixe, 
@@ -509,20 +525,39 @@ void Pinguim::desenharPatas()
 class Filhote : public Pinguim
 {
 public:
-    Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida = 60.0);
+    Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida = 30.0);
 
     void desenhar() override;
+    void diminuirTempoVida()
+    {
+        tempoRestanteVida -= 1;
+        if (tempoRestanteVida <= 0)
+            morreu = true;
+
+        std::cout << "Tempo de vida restante: " << tempoRestanteVida << std::endl;
+    }
+
+    bool estaMorto() const
+    {
+        return morreu;
+    }
+
+    void resetarTempoVida()
+    {
+        tempoRestanteVida = 60.0;
+    }
 
 private:
     double tempoRestanteVida;
-    double escala{ 0.8 }; // menor que o pinguim adulto
+    double escala{ 0.8 };
+    bool morreu { false };
 };
 
 Filhote::Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida)
     : Pinguim(direcao, posicao)
     , tempoRestanteVida(tempoInicialVida)
 {
-    temPeixeNaBoca = false;
+    peixeNaBoca = false;
 }
 
 void Filhote::desenhar()
@@ -541,8 +576,10 @@ void Filhote::desenhar()
 const int POSICAO_Y_TERRA = -COORDINATES_Y / 2 + 29;
 const int POSICAO_X_PINGUIM = -COORDINATES_X / 2 - 50;
 
+Posicao posicaoFilhote{ POSICAO_X_PINGUIM - 20, POSICAO_Y_TERRA - 6 };
+
 Pinguim pinguim(Direcao::DIREITA, { POSICAO_X_PINGUIM, POSICAO_Y_TERRA });
-Filhote filhote(Direcao::DIREITA, { POSICAO_X_PINGUIM -20, POSICAO_Y_TERRA - 6 });
+Filhote filhote(Direcao::DIREITA, posicaoFilhote);
 
 
 const std::array<double, 4> posicaoInicialYPeixes = { -180, -160, -140, -120 };
@@ -600,6 +637,10 @@ void specialKeys(int key, int x, int y)
         pinguim.mover(0, -5, Direcao::BAIXO);
         break;
     }
+
+    if (pinguim.entregouPeixe(posicaoFilhote))
+        filhote.resetarTempoVida();
+
     glutPostRedisplay();
 }
 
@@ -618,8 +659,16 @@ void desenharTempoJogo()
 
 void atualizaTempo(int valor) 
 {
+    filhote.diminuirTempoVida();
+
+    if (filhote.estaMorto())
+    {
+        std::cout << "Filhote morreu!" << std::endl;
+        exit(0);
+    }
+
     if (DURACAO_JOGO > 0)
-        DURACAO_JOGO--;
+        DURACAO_JOGO--; 
     else
     {
         std::cout << "Fim de jogo!" << std::endl;
@@ -640,7 +689,7 @@ void atualizarPeixes(int valor)
         if (pinguim.temPeixeNaBoca())
             continue;
 
-            
+
         if (pinguim.getAreaCabeca().colideCom(peixe.getArea()))
             pinguim.capturouPeixe();
     }
