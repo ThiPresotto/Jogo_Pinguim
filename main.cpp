@@ -55,6 +55,24 @@ struct Cor
     Cor(double r, double g, double b) : r(r), g(g), b(b) {}
 };
 
+struct Area 
+{
+    double x;
+    double y;
+    double largura;
+    double altura;
+    Area(double x, double y, double largura, double altura)
+        : x(x), y(y), largura(largura), altura(altura) {}
+
+    bool colideCom(const Area& outra) const
+    {
+        return (x < outra.x + outra.largura &&
+                x + largura > outra.x &&
+                y < outra.y + outra.altura &&
+                y + altura > outra.y);
+    }
+};
+
 enum class Direcao
 {
     CIMA,
@@ -163,6 +181,7 @@ public:
     Peixe(Direcao direcao, Posicao posicao);
     void desenhar() override;
     void mover(int delta);
+    Area getArea() const { return Area(posicao.x - 5, posicao.y - 5, 10, 10); }
 
 private:
     void desenharCorpo();
@@ -268,6 +287,9 @@ public:
     Pinguim(Direcao direcao, Posicao posicao);
     void desenhar() override;
     void mover(int deltaX, int deltaY, Direcao direcao);
+    Area getAreaCabeca() const;
+    void capturouPeixe();
+    bool temPeixeNaBoca() const { return temPeixeNaBoca; }
 
 private:
 
@@ -359,6 +381,42 @@ void Pinguim::mover(int deltaX, int deltaY, Direcao direcao)
         }
     }
 
+}
+
+Area Pinguim::getAreaCabeca() const
+{
+    if (estado == ANDANDO) 
+    {
+        return Area(
+            posicao.x - tamanhoCabeca / 2,
+            posicao.y + tamanhoCorpo * 1.5 - tamanhoCabeca / 2,
+            tamanhoCabeca,
+            tamanhoCabeca
+        );
+    } 
+    else
+    { 
+        if (direcao == Direcao::DIREITA) {
+            return Area(
+                posicao.x + tamanhoCorpo * 1.5 - tamanhoCabeca / 2,
+                posicao.y - tamanhoCabeca / 2,
+                tamanhoCabeca,
+                tamanhoCabeca
+            );
+        } else { 
+            return Area(
+                posicao.x - tamanhoCorpo * 1.5 - tamanhoCabeca / 2,
+                posicao.y - tamanhoCabeca / 2,
+                tamanhoCabeca,
+                tamanhoCabeca
+            );
+        }
+    }
+}
+
+void Pinguim::capturouPeixe()
+{
+    this->temPeixeNaBoca = true;
 }
 
 void Pinguim::desenharCorpo()
@@ -575,7 +633,17 @@ void atualizaTempo(int valor)
 void atualizarPeixes(int valor)
 {
     for (auto& peixe : peixes)
+    {
         peixe.mover(1);
+
+
+        if (pinguim.temPeixeNaBoca())
+            continue;
+
+            
+        if (pinguim.getAreaCabeca().colideCom(peixe.getArea()))
+            pinguim.capturouPeixe();
+    }
 
     glutPostRedisplay();
     glutTimerFunc(DELAY, atualizarPeixes, 0);
