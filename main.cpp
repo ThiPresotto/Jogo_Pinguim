@@ -1,719 +1,433 @@
-#include <GL/glut.h>
+﻿#include <GL/glut.h>
 #include <iostream>
 #include <vector>
-#include <array>
-#include <string>
+#include <cstdlib>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <GLES/gl.h>
 
-const int WIDTH = 800;
-const int HEIGHT = 600;
-const int FPS = 60;
-const int DELAY = 1000 / FPS;
-const int COORDINATES_X = 200;
-const int COORDINATES_Y = 200;
-const int COORDINATES_Z = 200;
+#include "Area.h"
+#include "Pinguim.h"
+#include "Cor.h"
+#include "Filhote.h"
+#include "Peixe.h"
+#include "Gelo.h"
 
-int DURACAO_JOGO = 5*60; // 5 minutos
+#define STB_IMAGE_IMPLEMENTATION  
+#include "stb_image.h"
 
-
-//////////////////////////////////////////////////////////////
-///declaracao de funcoes
-void elipse(float x, float y, float a, float b);
-void triangle();
 void init();
-void display();
-void specialKeys(int key, int x, int y);
-void atualizaTempo(int valor);
-void atualizarPeixes(int valor);
-void desenharTempoJogo();
-//////////////////////////////////////////////////////////////
+void reshape(int w, int h);
+void specialKeyboard(int key, int x, int y);
+void doFrame(int value);
+void atualizarTempoJogo(int value);
 
-// interface para desenhar objetos
-class IDesenhavel
-{
-public:
-    virtual void desenhar() = 0;
-    virtual ~IDesenhavel() {}
+float alturaDoChao{ -0.8 };
+
+float TEMPO_JOGO{ 300 };
+
+GLfloat rotX, rotY;
+int INITIAL_WIDTH = 800;
+int INITIAL_HEIGHT = 600;
+int window_top, window_side, window_front, window_free;
+std::vector<int> window_ids;
+
+bool acabouOJogo = false;
+bool jogadorGanhou = false;	
+std::string razaoDeTerAcabado = "";
+
+Pinguim pinguim(1, 0.0f, 0.0f);
+Filhote filhote(0.0f, 0.0f, 0.0f);
+
+GLuint texID[1];
+const char * textureFileNames = "imagens/gelo.jpg";
+
+std::vector<Peixe> cardume = {
+		Peixe(12.0f, alturaDoChao, -2.0f, 90),
+		Peixe(15.0f, alturaDoChao, 13.0f, 180),
+		Peixe(8.0f, alturaDoChao, -15.0f, 90),
+		Peixe(-10.0f, alturaDoChao, 10.0f, 180),
+		Peixe(-9.0f, alturaDoChao, -4.f, 90),
 };
 
-//////////////////////////////////////////////////////////////
-
-
-//////////////////////////////////////////////////////////////
-/// codigo com funcoes comuns
-struct Posicao
+std::vector<Gelo> gelos =
 {
-    double x;
-    double y;
-    Posicao(double x, double y) : x(x), y(y) {}
+	Gelo(-10.0f, alturaDoChao, -15.0f),
+	Gelo(-10.0f, alturaDoChao, 16.0f),
+	Gelo(13.0f, alturaDoChao, -7.0f),
+	Gelo(15.0f, alturaDoChao, 10.0f)
 };
 
-struct Cor
+void carregaGeloTextura() 
 {
-    double r;
-    double g;
-    double b;
-    Cor(double r, double g, double b) : r(r), g(g), b(b) {}
-};
+	int width, height, nrChannels;
+	unsigned char* data;
 
-struct Area 
+	glGenTextures(1, texID);
+
+	glBindTexture(GL_TEXTURE_2D, texID[0]);
+	// set the texture wrapping/filtering options (on the currently bound texture object)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	// load and generate the texture
+
+	data = stbi_load(textureFileNames, &width, &height, &nrChannels, 0);
+
+	if (data)
+	{
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+		//glGenerateMipmap(GL_TEXTURE_2D);
+		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	}
+	else
+	{
+		printf("Failed to load texture\n");
+	}
+	stbi_image_free(data);
+}
+
+std::string formatTime(int totalSeconds) {
+	if (totalSeconds < 0) totalSeconds = 0;
+	int minutes = totalSeconds / 60;
+	int seconds = totalSeconds % 60;
+	std::ostringstream oss;
+	oss << std::setw(2) << std::setfill('0') << minutes << ":" << std::setw(2) << std::setfill('0') << seconds;
+	return oss.str();
+}
+
+void gerarPosicoesAleatoriasPeixes()
 {
-    double x;
-    double y;
-    double largura;
-    double altura;
-    Area(double x, double y, double largura, double altura)
-        : x(x), y(y), largura(largura), altura(altura) {}
-
-    bool colideCom(const Area& outra) const
+    for (auto &peixe : cardume)
     {
-        return (x < outra.x + outra.largura &&
-                x + largura > outra.x &&
-                y < outra.y + outra.altura &&
-                y + altura > outra.y);
-    }
-};
-
-enum class Direcao
-{
-    CIMA,
-    BAIXO,
-    ESQUERDA,
-    DIREITA
-};
-
-void triangle()
-{
-    glBegin(GL_TRIANGLES);
-    glVertex3f(-1, 0, 0);
-    glVertex3f(0, 1, 0);
-    glVertex3f(1, 0, 0);
-    glEnd();
-}
-
-void elipse(float x, float y, float a, float b)
-{
-    glBegin(GL_POLYGON);
-    for (int i = 0; i < 360; i++)
-    {
-        float angle = i * 3.14159265358979323846 / 180.0f;
-        glVertex2f(x + a * cos(angle), y + b * sin(angle));
-    }
-    glEnd();
-}
-//////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////// 
-// codigo sobre o ambiente
-class Ambiente : public IDesenhavel
-{
-public:
-    Ambiente(double coordenadaXTela, double coordenadaYTela);
-    void desenhar() override;
-
-private:
-    void desenharCeu();
-    void desenharMar();
-    void desenharTerra();
-
-    Cor corCeu;
-    Cor corMar;
-    Cor corTerra;
-    double coordenadaXTela;
-    double coordenadaYTela;
-};
-
-Ambiente::Ambiente(double coordenadaXTela, double coordenadaYTela)
-    : coordenadaXTela(coordenadaXTela)
-    , coordenadaYTela(coordenadaYTela)
-    , corCeu(0.53, 0.81, 0.92) // Azul claro
-    , corMar(0.0, 0.749, 1.0) // Azul
-    , corTerra(0.5, 1, 0) // Verde Paris
-{
-}
-
-void Ambiente::desenhar()
-{
-    desenharCeu();
-    desenharTerra();
-    desenharMar();
-}
-
-void Ambiente::desenharCeu()
-{
-    glBegin(GL_POLYGON);
-    glColor3f(corCeu.r, corCeu.g, corCeu.b);
-    glVertex2f(-coordenadaXTela, coordenadaYTela);
-    glVertex2f(-coordenadaXTela, -coordenadaYTela);
-    glVertex2f(coordenadaXTela, -coordenadaYTela);
-    glVertex2f(coordenadaXTela, coordenadaYTela);
-    glEnd();
-}
-
-void Ambiente::desenharMar()
-{
-    glBegin(GL_POLYGON);
-    glColor3f(corMar.r, corMar.g, corMar.b);
-    glVertex2f(0, -coordenadaYTela);
-    glVertex2f(0, -coordenadaYTela / 2);
-    glVertex2f(coordenadaXTela, -coordenadaYTela / 2);
-    glVertex2f(coordenadaXTela, -coordenadaYTela);
-    glEnd();
-}
-
-void Ambiente::desenharTerra()
-{
-    glBegin(GL_POLYGON);
-    glColor3f(corTerra.r, corTerra.g, corTerra.b);
-    glVertex2f(-coordenadaXTela, -coordenadaYTela);
-    glVertex2f(-coordenadaXTela, -coordenadaYTela / 2);
-    glVertex2f(coordenadaXTela, -coordenadaYTela / 2);
-    glVertex2f(coordenadaXTela, -coordenadaYTela);
-    glEnd();
-}
-
-//////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////
-// codigo sobre o peixe
-class Peixe : public IDesenhavel
-{
-public:
-    Peixe(Direcao direcao, Posicao posicao);
-    void desenhar() override;
-    void mover(int delta);
-    Area getArea() const { return Area(posicao.x - 5, posicao.y - 5, 10, 10); }
-
-private:
-    void desenharCorpo();
-    void desenharCauda();
-
-    Direcao direcao;
-    Posicao posicao;
-    Cor cor{ 1.0, 0.65, 0.0 };
-    double tamanhoCorpo{ 18 };
-};
-
-
-Peixe::Peixe(Direcao direcao, Posicao posicao)
-    : direcao(direcao)
-    , posicao(posicao)
-{
-}
-
-void Peixe::desenhar()
-{
-    glPushMatrix();
-    glTranslatef(posicao.x, posicao.y, 0.0f);
-    glScalef(0.5, 0.5, 1);
-    glColor3f(cor.r, cor.g, cor.b);
-    desenharCorpo();
-    desenharCauda();
-    glPopMatrix();
-}
-
-void Peixe::mover(int delta)
-{
-    if (direcao == Direcao::ESQUERDA)
-        posicao.x -= delta;
-    else if (direcao == Direcao::DIREITA)
-        posicao.x += delta;
-
-    if (posicao.x > COORDINATES_X - 2)
-        this->direcao = Direcao::ESQUERDA;
-    else if (posicao.x < 5)
-        this->direcao = Direcao::DIREITA;
-}
-
-void Peixe::desenharCorpo()
-{
-    glPushMatrix();
-    switch (direcao)
-    {
-    case Direcao::CIMA:
-    case Direcao::BAIXO:
-    {
-        elipse(0, 0, 5, 10);
-        break;
-    }
-    case Direcao::ESQUERDA:
-    case Direcao::DIREITA:
-        elipse(0, 0, 10, 5);
-        break;
-    }
-    glPopMatrix();
-}
-
-void Peixe::desenharCauda()
-{
-    glPushMatrix();
-    switch (direcao)
-    {
-    case Direcao::CIMA:
-    {
-        glTranslatef(0.0f, -tamanhoCorpo, 0.0f);
-        break;
-    }
-    case Direcao::BAIXO:
-    {
-        glTranslatef(0.0f, tamanhoCorpo, 0.0f);
-        glRotatef(180, 0.0f, 0.0f, 1.0f);
-        break;
-    }
-    case Direcao::ESQUERDA:
-    {
-        glTranslatef(tamanhoCorpo, 0.0f, 0.0f);
-        glRotatef(90, 0.0f, 0.0f, 1.0f);
-        break;
-    }
-    case Direcao::DIREITA:
-    {
-        glTranslatef(-tamanhoCorpo, 0.0f, 0.0f);
-        glRotatef(-90, 0.0f, 0.0f, 1.0f);
-        break;
-    }
-    }
-    glScalef(5, 10, 1);
-    triangle();
-    glPopMatrix();
-}
-
-//////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////
-// codigo sobre o pinguim pai
-class Pinguim : public IDesenhavel
-{
-public:
-    Pinguim(Direcao direcao, Posicao posicao);
-    void desenhar() override;
-    void mover(int deltaX, int deltaY, Direcao direcao);
-    Area getAreaCabeca() const;
-    void capturouPeixe();
-    bool temPeixeNaBoca() const { return peixeNaBoca; }
-    bool entregouPeixe(Posicao posicaoFilhote);
-
-private:
-
-    enum Estado
-    {
-        ANDANDO,
-        NADANDO
-    };
-
-    void desenharCorpo();
-    void desenharCabeca();
-    void desenharOlhos();
-    void desenharBico();
-    void desenharPatas();
-
-protected:
-    Direcao direcao;
-    Posicao posicao;
-    Estado estado{ ANDANDO };
-    double tamanhoCorpo{ 18 };
-    double tamanhoCabeca{ 10 };
-    double tamanhoOlhos{ 2 };
-    double tamanhoBico{ 3 };
-    double tamanhoPatas{ 8 };
-    bool peixeNaBoca { false };
-};
-
-Pinguim::Pinguim(Direcao direcao, Posicao posicao)
-    : direcao(direcao)
-    , posicao(posicao)
-{
-
-}
-
-void Pinguim::desenhar()
-{
-    glPushMatrix();
-    glTranslatef(posicao.x, posicao.y, 0.0f);
-    glScalef(0.5, 0.5, 1);
-
-    if (estado == Estado::NADANDO)
-    {
-        if (direcao == Direcao::DIREITA)
-            glRotatef(-90, 0, 0, 1);
-        else if (direcao == Direcao::ESQUERDA)
-            glRotatef(90, 0, 0, 1);
-    }
-
-    glPushMatrix();
-    glPopMatrix();
-    desenharCorpo();
-    desenharCabeca();
-    desenharOlhos();
-    desenharBico();
-    desenharPatas();
-    glPopMatrix();
-}
-
-void Pinguim::mover(int deltaX, int deltaY, Direcao direcao)
-{
-    if (direcao == Direcao::ESQUERDA || direcao == Direcao::DIREITA)
-        this->direcao = direcao;
-
-    if (estado == Estado::ANDANDO)
-    {
-        if (posicao.x + deltaX >= -COORDINATES_X)
-            posicao.x += deltaX;
-
-        if (posicao.x >= 5)
-        {
-            estado = Estado::NADANDO;
-            posicao.y = -120;
-            posicao.x = 25;
-        }
-
-    }
-    else if (estado == Estado::NADANDO)
-    {
-        if (posicao.x + deltaX >= 0 && posicao.x + deltaX <= COORDINATES_X)
-            posicao.x += deltaX;
-
-        if ((posicao.y + deltaY) <= -100 && (posicao.y + deltaY) >= -COORDINATES_Y)
-            posicao.y += deltaY;
-
-        if (posicao.x < 5 && posicao.y > -110)
-        {
-            estado = Estado::ANDANDO;
-            posicao.y = -71;
-        }
-    }
-
-}
-
-Area Pinguim::getAreaCabeca() const
-{
-    if (estado == ANDANDO) 
-    {
-        return Area(
-            posicao.x - tamanhoCabeca / 2,
-            posicao.y + tamanhoCorpo * 1.5 - tamanhoCabeca / 2,
-            tamanhoCabeca,
-            tamanhoCabeca
-        );
-    } 
-    else
-    { 
-        if (direcao == Direcao::DIREITA) {
-            return Area(
-                posicao.x + tamanhoCorpo * 1.5 - tamanhoCabeca / 2,
-                posicao.y - tamanhoCabeca / 2,
-                tamanhoCabeca,
-                tamanhoCabeca
-            );
-        } else { 
-            return Area(
-                posicao.x - tamanhoCorpo * 1.5 - tamanhoCabeca / 2,
-                posicao.y - tamanhoCabeca / 2,
-                tamanhoCabeca,
-                tamanhoCabeca
-            );
-        }
+        float novoX = -20.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (40.0f)));
+        float novoZ = -20.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (40.0f)));
+        peixe.setNewPosition(novoX, novoZ);
     }
 }
 
-void Pinguim::capturouPeixe()
+void gerarPosicoesAleatoriasGelos()
 {
-    peixeNaBoca = true;
+	for (auto &gelo : gelos)
+	{
+		float novoX = -15.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (30.0f)));
+		float novoZ = -15.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (30.0f)));
+		gelo.setNewPosition(novoX, novoZ);
+	}
 }
 
-bool Pinguim::entregouPeixe(Posicao posicaoFilhote)
+void timerGelos(int value)
 {
-    if (!temPeixeNaBoca())
-        return false;
-
-    if (posicao.x > posicaoFilhote.x - 10 && posicao.x < posicaoFilhote.x + 10 &&
-        posicao.y > posicaoFilhote.y - 10 && posicao.y < posicaoFilhote.y + 10)
-    {
-        peixeNaBoca = false;
-        return true;
-    }
-
-    return false;
+	gerarPosicoesAleatoriasGelos();
+	
+	glutTimerFunc(5000, timerGelos, 0);
 }
 
-void Pinguim::desenharCorpo()
+void timerPeixes(int value)
 {
-    float posicaoBarriga{ 10.0f };
-
-    if (direcao == Direcao::ESQUERDA)
-        posicaoBarriga = -posicaoBarriga;
-
-    glColor3f(0.12, 0.12, 0.12);
-    glPushMatrix();
-    glTranslatef(0.0f, -tamanhoCorpo, 0.0f);
-    elipse(0, 0, tamanhoCorpo, tamanhoCorpo * 2);
-    glTranslatef(posicaoBarriga, 0, 0.0f);
-    glColor3f(1.0, 1.0, 1.0);
-    elipse(0, 0, tamanhoCorpo * 0.5, tamanhoCorpo * 1.5);
-    glPopMatrix();
+    gerarPosicoesAleatoriasPeixes();
+    
+    glutTimerFunc(10000, timerPeixes, 0);
 }
 
-void Pinguim::desenharCabeca()
-{
-    glColor3f(0.12, 0.12, 0.12);
-    glPushMatrix();
-    glTranslatef(0.0f, tamanhoCorpo * 1.5, 0.0f);
-    elipse(0, 0, tamanhoCabeca, tamanhoCabeca);
-    glPopMatrix();
+void drawPlacar() {
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	gluOrtho2D(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT));
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+	glDisable(GL_LIGHTING);
+
+	int w = glutGet(GLUT_WINDOW_WIDTH);
+	int h = glutGet(GLUT_WINDOW_HEIGHT);
+
+	if (acabouOJogo || jogadorGanhou) {
+		std::string endMsg = jogadorGanhou ? "VOCE GANHOU!" : "ACABOU O JOGO!!";
+		if (jogadorGanhou) 
+			glColor3f(0.1f, 0.8f, 0.1f);
+		else 
+			glColor3f(0.8f, 0.1f, 0.1f);
+
+
+		glRasterPos2i(w / 2 - 100, h / 2 + 20);
+		for (char c : endMsg) 
+			glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, c);
+
+		if (acabouOJogo && !razaoDeTerAcabado.empty()) {
+			glColor3f(0.8f, 0.1f, 0.1f);
+			glRasterPos2i(w / 2 - 120, h / 2);
+			for (char c : razaoDeTerAcabado) 
+				glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+		}
+
+	}
+	else 
+	{
+		std::string sessionStr = "Jogo acaba em: " + formatTime(TEMPO_JOGO);
+		glColor3f(0.f, 0.f, 0.f);
+		glRasterPos2i(10, h - 40);
+		for (char c : sessionStr) 
+			glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+	}
+
+	glEnable(GL_LIGHTING);
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+	glPopMatrix();
 }
 
-void Pinguim::desenharOlhos()
+void drawScene()
 {
-    int posicaoOlho{ 2 };
+	// Plataforma de gelo
+	float zoom{ 40.f };
 
-    if (direcao == Direcao::ESQUERDA)
-        posicaoOlho = -posicaoOlho;
+	glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, new float[4] {0.8f, 0.95f, 1.0f, 1.0f});
+	glMaterialfv(GL_FRONT, GL_SPECULAR, new float[4] {1.0f, 1.0f, 1.0f, 1.0f});
+	glMaterialf(GL_FRONT, GL_SHININESS, 50.0f);
 
-    glColor3f(1.0, 1.0, 1.0);
-    glPushMatrix();
-    glTranslatef(0.0f, tamanhoCorpo * 1.5, 0.0f);
-    glTranslatef(posicaoOlho, 0.0f, 0.0f);
-    elipse(0, 0, tamanhoOlhos, tamanhoOlhos);
-    glPopMatrix();
+	glEnable(GL_TEXTURE_2D);
+
+	/* Draw a teapot with the first texture at (-2.3,0.3,0) */
+
+	glBindTexture(GL_TEXTURE_2D, texID[0]);  // Bind texture #0 for use on the first teapot.
+
+	glPushMatrix();
+		glTranslatef(0 , alturaDoChao, 0);
+		glScalef(zoom , 0.05f, zoom);
+		glutSolidCube(1.0f);
+	glPopMatrix();
+
+	glDisable(GL_TEXTURE_2D);
+
+	pinguim.desenha();
+	filhote.desenha();
+
+	for (auto &peixe : cardume)
+		peixe.desenha();
+
+	for (auto& gelo : gelos)
+		gelo.desenha();
+
 }
 
-void Pinguim::desenharBico()
+void display_top()
 {
-    double posicaoBico{ 10 };
-    double posicaoPeixe { 7 };
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
 
-    if (direcao == Direcao::ESQUERDA)
-    {
-        posicaoBico = -posicaoBico;
-        posicaoPeixe = -posicaoPeixe;
-    }
-
-
-    glColor3f(1.0, 0.65, 0.0);
-
-        glPushMatrix();
-        glTranslatef(posicaoBico, tamanhoCorpo * 1.5  - tamanhoCabeca / 2, 0.0f);
-        glScalef(5, 5, 1);
-        triangle();
-    glPopMatrix();
-
-    if (temPeixeNaBoca())
-    {
-        glPushMatrix();
-        Peixe peixeNaBoca(Direcao::CIMA, { posicaoPeixe, 
-                                    (tamanhoCorpo * 1.5 - tamanhoCabeca / 2  - 5)});  
-        glScalef(2, 2, 1);    
-        peixeNaBoca.desenhar();
-        glPopMatrix();
-    }
+	gluLookAt(pinguim.getX(), pinguim.getY() + 20.0f, pinguim.getZ(),
+						pinguim.getX(), pinguim.getY(), pinguim.getZ(),
+						0, 0, -1);
+	drawScene();
+	drawPlacar();
+	glutSwapBuffers();
 }
 
-void Pinguim::desenharPatas()
+void display_side()
 {
-    glColor3f(0.78, 0.39, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
 
-    glPushMatrix();
-    glTranslatef(4, -tamanhoCorpo * 3, 0.0f);
-    elipse(0, 0, tamanhoPatas, tamanhoPatas / 2);
-    glTranslatef(-tamanhoCorpo / 2, 0.0f, 0.0f);
-    elipse(0, 0, tamanhoPatas, tamanhoPatas / 2);
-    glPopMatrix();
-}
-//////////////////////////////////////////////////////////////////////////
-
-/////////////////////////////////////////////////////////////////////
-// codigo Filhote
-class Filhote : public Pinguim
-{
-public:
-    Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida = 30.0);
-
-    void desenhar() override;
-    void diminuirTempoVida()
-    {
-        tempoRestanteVida -= 1;
-        if (tempoRestanteVida <= 0)
-            morreu = true;
-
-        std::cout << "Tempo de vida restante: " << tempoRestanteVida << std::endl;
-    }
-
-    bool estaMorto() const
-    {
-        return morreu;
-    }
-
-    void resetarTempoVida()
-    {
-        tempoRestanteVida = 60.0;
-    }
-
-private:
-    double tempoRestanteVida;
-    double escala{ 0.8 };
-    bool morreu { false };
-};
-
-Filhote::Filhote(Direcao direcao, Posicao posicao, double tempoInicialVida)
-    : Pinguim(direcao, posicao)
-    , tempoRestanteVida(tempoInicialVida)
-{
-    peixeNaBoca = false;
+	gluLookAt(pinguim.getX(), pinguim.getY() + 5.0f, pinguim.getZ() + 20.0f,
+						pinguim.getX(), pinguim.getY(), pinguim.getZ(),
+						0, 1, 0);
+	drawScene();
+	drawPlacar();
+	glutSwapBuffers();
 }
 
-void Filhote::desenhar()
+void display_front()
 {
-    glPushMatrix();
-    glTranslatef(posicao.x, posicao.y, 0.0f);
-    glScalef(escala, escala, 1);
-    glTranslatef(-posicao.x, -posicao.y, 0.0f);
-    Pinguim::desenhar();         
-    glPopMatrix();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	gluLookAt(pinguim.getX() + 20.0f, pinguim.getY() + 5.0f, pinguim.getZ(), pinguim.getX(), pinguim.getY(), pinguim.getZ(),
+						0, 1, 0);
+	drawScene();
+	drawPlacar();
+	glutSwapBuffers();
 }
 
-/////////////////////////////////////////////////////////////////////
-
-
-const int POSICAO_Y_TERRA = -COORDINATES_Y / 2 + 29;
-const int POSICAO_X_PINGUIM = -COORDINATES_X / 2 - 50;
-
-Posicao posicaoFilhote{ POSICAO_X_PINGUIM - 20, POSICAO_Y_TERRA - 6 };
-
-Pinguim pinguim(Direcao::DIREITA, { POSICAO_X_PINGUIM, POSICAO_Y_TERRA });
-Filhote filhote(Direcao::DIREITA, posicaoFilhote);
-
-
-const std::array<double, 4> posicaoInicialYPeixes = { -180, -160, -140, -120 };
-const std::array<double, 7> posicaoInicialXPeixes = { 50, 25, 75, 100, 125, 150, 175 };
-
-std::vector<Peixe> peixes {
-    Peixe(Direcao::DIREITA, { posicaoInicialXPeixes[0], posicaoInicialYPeixes[0] }),
-    Peixe(Direcao::DIREITA, { posicaoInicialXPeixes[1], posicaoInicialYPeixes[1] }),
-    Peixe(Direcao::ESQUERDA, { posicaoInicialXPeixes[2], posicaoInicialYPeixes[2] }),
-    Peixe(Direcao::ESQUERDA, { posicaoInicialXPeixes[3], posicaoInicialYPeixes[3] })
-};
-
-int main(int argc, char** argv)
+void display_free()
 {
-    glutInit(&argc, argv);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
 
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
-
-    glutInitWindowSize(WIDTH, HEIGHT);
-    glutInitWindowPosition(100, 100);
-    glutCreateWindow("Jogo do Pinquim");
-    glutSpecialFunc(specialKeys);
-    glutTimerFunc(1000, atualizaTempo, 0);
-    glutTimerFunc(200, atualizarPeixes, 0); 
-
-    init();
-    glutDisplayFunc(display);
-    glutMainLoop();
-
-    return 0;
+	gluLookAt(pinguim.getX() + 10.0f, pinguim.getY() + 10.0f, pinguim.getZ() + 10.0f,
+						pinguim.getX(), pinguim.getY(), pinguim.getZ(),
+						0, 1, 0);
+	drawScene();
+	drawPlacar();
+	glutSwapBuffers();
 }
 
-void init(void)
+void reshape(int w, int h)
 {
-    glClearColor(1, 1, 1, 0);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(-COORDINATES_X, COORDINATES_X, -COORDINATES_Y,
-        COORDINATES_Y, -COORDINATES_Z, COORDINATES_Z);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluPerspective(45.0, GLfloat(w) / GLfloat(h), 0.1, 100.0);
 }
 
-void specialKeys(int key, int x, int y) 
+void specialKeyboard(int key, int x, int y)
 {
-    switch (key) {
-    case GLUT_KEY_LEFT:
-        pinguim.mover(-5, 0, Direcao::ESQUERDA);
-        break;
-    case GLUT_KEY_RIGHT:
-        pinguim.mover(5, 0, Direcao::DIREITA);
-        break;
-    case GLUT_KEY_UP:
-        pinguim.mover(0, 5, Direcao::CIMA);
-        break;
-    case GLUT_KEY_DOWN:
-        pinguim.mover(0, -5, Direcao::BAIXO);
-        break;
-    }
-
-    if (pinguim.entregouPeixe(posicaoFilhote))
-        filhote.resetarTempoVida();
-
-    glutPostRedisplay();
+	switch (key)
+	{
+	case GLUT_KEY_LEFT:
+		pinguim.orientar(4);
+		break;
+	case GLUT_KEY_RIGHT:
+		pinguim.orientar(-4);
+		break;
+	case GLUT_KEY_UP:
+		pinguim.mover(0.3);
+		break;
+	case GLUT_KEY_DOWN:
+		pinguim.mover(-0.3);
+		break;
+	}
+	glutPostRedisplay();
 }
 
-void desenharTempoJogo()
+void doFrame(int value)
 {
-    glPushMatrix();
-        glColor3f(1, 1, 1);
-        glRasterPos2f(0, 0);
-        std::string tempo = "Tempo restante: " + std::to_string(DURACAO_JOGO);
-        for (char c : tempo)
-        {
-            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
-        }
-    glPopMatrix();
+	for (auto &peixe : cardume)
+	{
+		if (!pinguim.temPeixePegado())
+			pinguim.verificarSePegouPeixe(peixe);
+	}
+
+	for (auto& gelo : gelos)
+	{
+		auto areaGelo = gelo.getArea();
+
+		if (areaGelo.colideCom(pinguim.getArea()))
+		{
+			razaoDeTerAcabado = "O pinguim escorregou no gelo e caiu no mar!";
+			acabouOJogo = true;
+		}
+
+	}
+
+	if (pinguim.temPeixePegado())
+		pinguim.verificarSeAlimentouFilhote(filhote);
+
+
+	for (int id : window_ids)
+	{
+		glutSetWindow(id);
+		glutPostRedisplay();
+	}
+	glutTimerFunc(1000 / 60, doFrame, 0);
 }
 
-void atualizaTempo(int valor) 
+void atualizarTempoJogo(int value)
 {
-    filhote.diminuirTempoVida();
+	filhote.diminuirTempoDeVida(1.0f);
 
-    if (filhote.estaMorto())
-    {
-        std::cout << "Filhote morreu!" << std::endl;
-        exit(0);
-    }
+	if (filhote.verificarSeEstaVivo())
+	{
+		std::cout << "Filhote morreu!" << std::endl;
+		razaoDeTerAcabado = "O filhote morreu de fome.";
+		acabouOJogo = true;
+	}
 
-    if (DURACAO_JOGO > 0)
-        DURACAO_JOGO--; 
-    else
-    {
-        std::cout << "Fim de jogo!" << std::endl;
-        exit(0);
-    }
+	if (!acabouOJogo || jogadorGanhou)
+	{
+		if (TEMPO_JOGO > 0)
+			TEMPO_JOGO--;
+		else
+		{
+			std::cout << "Fim de jogo!" << std::endl;
+			jogadorGanhou = true;
+		}
+	}
 
-    glutPostRedisplay();
-    glutTimerFunc(1000, atualizaTempo, 0);
+	std::cout << "Tempo de jogo restante: " << TEMPO_JOGO << " segundos." << std::endl;
+
+	glutPostRedisplay();
+	glutTimerFunc(1000, atualizarTempoJogo, 0);
 }
 
-void atualizarPeixes(int valor)
+void init()
 {
-    for (auto& peixe : peixes)
-    {
-        peixe.mover(1);
+	glClearColor(0.529f, 0.808f, 0.922f, 1.0f); // background color
 
-
-        if (pinguim.temPeixeNaBoca())
-            continue;
-
-
-        if (pinguim.getAreaCabeca().colideCom(peixe.getArea()))
-            pinguim.capturouPeixe();
-    }
-
-    glutPostRedisplay();
-    glutTimerFunc(DELAY, atualizarPeixes, 0);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	float white[4] = { 1, 1, 1, 1 };  // A white material, suitable for texturing.
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, white);
 }
 
-
-void display()
+int main(int argc, char **argv)
 {
-    glClear(GL_COLOR_BUFFER_BIT);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
 
-    Ambiente ambiente(COORDINATES_X, COORDINATES_Y);
-    ambiente.desenhar();
-    desenharTempoJogo();
+	const int spacing = 10;
+	const int winW = 600;
+	const int winH = 450;
+	const int baseX = 50;
+	const int baseY = 50;
 
-    pinguim.desenhar();
-    filhote.desenhar();
 
-    for (auto& peixe : peixes)
-        peixe.desenhar();
+	glutInitWindowSize(winW, winH);
+	glutInitWindowPosition(baseX + 0 * (winW + spacing), baseY + 0 * (winH + spacing));
+	window_free = glutCreateWindow("Free Camera");
+	init();
+	carregaGeloTextura();
+	
+	glutDisplayFunc(display_free);
+	glutReshapeFunc(reshape);
+	glutSpecialFunc(specialKeyboard);
+	window_ids.push_back(window_free);
 
-    glutSwapBuffers();
+	glutInitWindowSize(winW, winH);
+	glutInitWindowPosition(baseX + 1 * (winW + spacing), baseY + 0 * (winH + spacing));
+	window_top = glutCreateWindow("Top Camera");
+	init();
+	carregaGeloTextura();
+	glutDisplayFunc(display_top);
+	glutReshapeFunc(reshape);
+	glutSpecialFunc(specialKeyboard);
+	window_ids.push_back(window_top);
+
+	glutInitWindowSize(winW, winH);
+	glutInitWindowPosition(baseX + 0 * (winW + spacing), baseY + 1 * (winH + spacing));
+	window_side = glutCreateWindow("Side Camera");
+	init();
+	carregaGeloTextura();
+	glutDisplayFunc(display_side);
+	glutReshapeFunc(reshape);
+	glutSpecialFunc(specialKeyboard);
+	window_ids.push_back(window_side);
+
+	glutInitWindowSize(winW, winH);
+	glutInitWindowPosition(baseX + 1 * (winW + spacing), baseY + 1 * (winH + spacing));
+	window_front = glutCreateWindow("Front Camera");
+	init();
+
+	carregaGeloTextura();
+
+	glutDisplayFunc(display_front);
+	glutReshapeFunc(reshape);
+	glutSpecialFunc(specialKeyboard);
+	window_ids.push_back(window_front);
+
+	glutTimerFunc(100, doFrame, 0);
+	srand(static_cast<unsigned int>(time(nullptr)));
+	glutTimerFunc(10000, timerPeixes, 0);
+	glutTimerFunc(5000, timerGelos, 0);
+	glutTimerFunc(1000, atualizarTempoJogo, 0);
+	glutMainLoop();
+	return 0;
 }
